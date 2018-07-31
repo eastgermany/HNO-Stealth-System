@@ -1,0 +1,33 @@
+begin aaaSneakLight177
+
+short PlayerInThisLight
+short TempVar
+
+set TempVar to 0
+
+while ( TempVar != a__StealthManager.NumberOfLights )
+	set TempVar to TempVar + 1
+endwhile
+
+if ( GetDistance, player <= 210 )					;player is too close
+																;value is currently manually chosen
+	if ( PlayerInThisLight == 0 )
+
+		set "a__StealthManager".NumberOfLights to ( TempVar + 1 )
+		set PlayerInThisLight to 1
+
+	endif
+
+;commented out for debugging
+else															;player is far enough away
+
+	if ( PlayerInThisLight == 1 )
+
+		set "a__StealthManager".NumberOfLights to ( TempVar - 1 )
+		set PlayerInThisLight to 0
+
+	endif
+
+endif
+
+end

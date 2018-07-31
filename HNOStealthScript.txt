@@ -1,0 +1,187 @@
+begin aaaHorseNoseStealthScript
+
+;DOT PRODUCT of two vectors, vecA (NPC->player), vecB (NPC line-of-sight)
+float vecA_x	;vec1's x value
+float vecB_x	;vec2's x value
+float vecA_y	;vec1's y value
+float vecB_y	;vec2's y value
+
+float TempVar
+float TempVarB
+float TempVarC
+float DotProduct
+
+float DebugVar
+float DebugVarB
+
+short InvertDetection
+float DetectionAngle
+
+short StoredSneak
+short AlertRadius			
+
+;PATROL VARS
+short PatrolState
+
+;---------------------------------------------------------
+;--- 	set up values for the vectors' x and y values ------
+;		set vecA y
+set TempVar to player->GetPos, Y
+set TempVarB to GetPos, Y
+set vecA_y to TempVar - TempVarB
+
+;		set vecA x
+set TempVar to player->GetPos, X
+set TempVarB to GetPos, X
+set vecA_x to TempVar - TempVarB
+
+;		set vecB y
+set vecB_y to 10		;arbitrary displacement along y-axis
+
+;		set vecB x
+set TempVar to GetStartingAngle, Z
+;*********************************************************
+;***	FUDGE! see explanation at end of block *************
+set InvertDetection to 0	;reset
+
+if ( TempVar > 90 )
+	if ( TempVar < 270 ) 
+		set InvertDetection to 1
+	endif
+endif
+	
+;*********************************************************
+setx TempVar to XDegRad TempVar
+
+setx TempVar to XTan TempVar
+set vecB_x to vecB_y * TempVar
+
+;---------------------------------------------------------
+;---	calculate angle between vectors with dot product ---
+;a . b = |a||b|cosA		a . b = axbx + ayby
+;arccos ( a . b / |a||b| )	= A 
+
+;		calculate dot product
+set TempVar to ( vecA_x * vecB_x )
+set TempVarB to ( vecA_y * vecB_y )
+set DotProduct to TempVar + TempVarB		
+
+;		calculate magnitude of vectors A and B
+;		vector A
+set TempVar to ( vecA_x * vecA_x )		;x-value squared
+set TempVarB to ( vecA_y * vecA_y )		;y-value squared
+set TempVarC to TempVar + TempVarB		
+setx TempVarC to XSqrt TempVarC			;tempvarc -- magnitude of vector A
+;		vector B
+set TempVar to ( vecB_x * vecB_x )		;x-value squared
+set TempVarB to ( vecB_y * vecB_y )		;y-value squared
+set TempVar to TempVar + TempVarB	
+setx TempVar to XSqrt TempVar				;tempvar -- magnitude of vector B
+
+set TempVar to TempVar * TempVarC		;product of the magnitudes
+
+set TempVar to ( DotProduct / TempVar );( a . b / |a||b| )
+
+setx DetectionAngle to XArcCos TempVar			;angle between npc direction & player-npc line
+setx DetectionAngle to XRadDeg DetectionAngle
+
+;---------------------------------------------------------
+;--- FUDGE EXPLANATION -----------------------------------
+;---------------------------------------------------------
+;when npc line-of-sight vector y-value is less than 0, DetectionAngle is 180 when player is in front of NPC
+;varying symmetrically to 0 when they are behind NPC. 
+;the reverse is true when line-of-sight vector y-value is greater than 0; DetectionAngle is 0 when player is front of NPC
+;and 180 when they are behind NPC.
+;this is probably due to do negative signs in the different Cartesian quadrants
+
+if ( InvertDetection == 1 ) 	;NPC's line-of-sight extends negatively along y-axis
+										
+		set DetectionAngle to ( 180 - DetectionAngle )
+
+endif
+
+if ( DetectionAngle < 87 )		;NPC FOV -- 0 when player in front of NPC, 180 when behind, symmetrical
+		
+		if ( GetLOS, player == 1 ) ;NPC's vision isn't blocked by any objects
+				if ( a__StealthManager.LightState == 1 )		;player is illuminated
+						;SetFight, 100
+				endif
+
+				set TempVar to ( GetDistance, player ) 		;distance to player
+				;EXPONENTIAL METHOD:
+				;The minimum distance the player can approach the NPC without alerting them will be determined
+				;by an exponential decay: 	y = ne^-x/m, where y is minimum distance, and x is player's Sneak skill.
+				;Simultaneous equations: 	y1 = ne^-x1/m, 	y2 = ne^-0/m , y1 is mindist with 100 Sneak, and y2 is mindist with 0 Sneak
+				;									y1 = ne^-100/m		y2 = n
+				;									m = -100 / ln(y1/y2)
+				;For now, linear method will be used as it is sufficient. Above method will require Taylor series, surplus complexity.
+				;y = -nx + c, where y is mindist, x is Sneak skill.
+				;Simultaneous equations:	x0 = 0 				y0 = mindist @ Sneak = 0
+				;									x1 = 100				y1 = mindist @ Sneak = 100
+				;									x2 = skill cap		y2 = 0 (no reduction in mindist beyond here, negative values will be set to 0)
+				;Solve for c = y0	& n = y1 / (x2 - 100 )
+
+
+				set TempVarC to player->GetSneak
+				if ( StoredSneak != TempVarC)				;only run this if player sneak skill has changed since it was last run
+
+					set StoredSneak to TempVarC
+
+					;Setting y0 at 200, y1 at 20, x2 at 125
+					;n is TempVarB
+
+					set TempVarB to 125 - 100				;skill cap - 100
+					set TempVarB to 20 / TempVarB			;mindist @ 0 / skill cap - 100
+				
+					;player sneak sill is TempVarC
+					set TempVarB to ( -1 * TempVarB )	;-n
+					set TempVarB to TempVarB * TempVarC ;-nx
+				
+					set AlertRadius to TempVarB + 200	;-nx + c
+					;ISSUE: linear function not working correctly, 200 - 20 manifesting as 200 - 120
+
+				endif
+
+				;TempVar: distance to player, TempVarB: minimum distance of approach before alert
+				;DEBUGGING
+				set DebugVar to TempVar			;distance to player
+				set DebugVarB to AlertRadius	;mindist
+
+				if ( TempVar < AlertRadius )				;if player is within alerting distance
+					;SetFight, 100
+				endif
+				
+		endif
+
+
+
+endif
+
+;---------------------------------------------------------
+;--- PATROL ----------------------------------------------
+;---------------------------------------------------------
+;Points	960 	-1472	 	192	Patrol State:		0
+;			960	-1984		192							1
+;			-192	-1984		192							2
+;			-192	-1472		192							3
+
+;if ( GetCurrentAIPackage == -1 )
+if ( PatrolState == 5 ) ;--DEBUGGING
+
+	if ( PatrolState == 0 )
+		AITravel, 960 -1472 192
+		set PatrolState to 1
+	elseif ( PatrolState == 1 )
+		AITravel, 960 -1984 192
+		set PatrolState to 2
+	elseif ( PatrolState == 2 )
+		AITravel, -192 -1984 192
+		set PatrolState to 3
+	elseif ( PatrolState == 3 )
+		AITravel, -192 -1472 192
+		set PatrolState to 0
+	endif
+
+endif
+
+end

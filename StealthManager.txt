@@ -1,0 +1,22 @@
+begin aaaStealthManagerScript
+
+short NumberOfLights
+short LightState
+
+if ( NumberOfLights > 0 )
+
+	if ( LightState == 0 )
+		set LightState to 1
+		MessageBox "You are now illuminated."
+	endif
+
+elseif ( NumberOfLights == 0 )
+
+	if ( LightState == 1 )
+		set LightState to 0
+		MessageBox "You are no longer illuminated."
+	endif
+
+endif
+
+end
